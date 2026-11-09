@@ -1,0 +1,1251 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#14120E" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#F7F5EF" media="(prefers-color-scheme: light)">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Alpha 帳本">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./apple-touch-icon.png">
+<link rel="icon" href="./favicon-32.png" sizes="32x32">
+<style>
+:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0;font:14px system-ui,-apple-system,sans-serif}
+img{max-width:100%}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<title>Alpha 刷分帳本</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+/* Layout: one column, mobile-first — hero ledger balance, then entry, then charts,
+   then the editable day grid. Dark-first, because that is where this work happens. */
+:root{
+  --bg:#14120E; --surface:#1D1A14; --surface-2:#262219; --line:#332E23; --line-soft:#272318;
+  --ink:#F3EEE2; --ink-2:#A79F90; --ink-3:#766E60;
+  --accent:#F0B90B; --accent-ink:#171205; --accent-soft:rgba(240,185,11,.13);
+  --pos:#35C78F; --neg:#F0566B; --pos-mark:#1FA37D; --neg-mark:#E8475F;
+  --grid:rgba(243,238,226,.09); --shadow:0 1px 2px rgba(0,0,0,.4);
+  --radius:12px;
+  --font-ui:"Archivo","PingFang TC","Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif;
+  --font-num:"IBM Plex Mono","SFMono-Regular",Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme:light){
+  :root:not([data-theme="dark"]){
+    --bg:#F7F5EF; --surface:#FFFFFF; --surface-2:#F2EEE3; --line:#E2DCCB; --line-soft:#EDE8DA;
+    --ink:#1B1810; --ink-2:#5D5748; --ink-3:#8B8373;
+    --accent:#B38600; --accent-ink:#FFFFFF; --accent-soft:rgba(179,134,0,.11);
+    --pos:#0E7A66; --neg:#C32F43; --pos-mark:#0E8A74; --neg-mark:#D13A4E;
+    --grid:rgba(27,24,16,.1); --shadow:0 1px 2px rgba(27,24,16,.07);
+    color-scheme:light;
+  }
+}
+:root[data-theme="light"]{
+  --bg:#F7F5EF; --surface:#FFFFFF; --surface-2:#F2EEE3; --line:#E2DCCB; --line-soft:#EDE8DA;
+  --ink:#1B1810; --ink-2:#5D5748; --ink-3:#8B8373;
+  --accent:#B38600; --accent-ink:#FFFFFF; --accent-soft:rgba(179,134,0,.11);
+  --pos:#0E7A66; --neg:#C32F43; --pos-mark:#0E8A74; --neg-mark:#D13A4E;
+  --grid:rgba(27,24,16,.1); --shadow:0 1px 2px rgba(27,24,16,.07);
+  color-scheme:light;
+}
+
+*{box-sizing:border-box}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:var(--font-ui); font-size:15px; line-height:1.5;
+  -webkit-text-size-adjust:100%;
+}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:var(--bg)}
+.wrap{max-width:860px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 56px}
+h1,h2,h3{margin:0;text-wrap:balance;font-weight:600;letter-spacing:-.01em}
+.num{font-family:var(--font-num);font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
+.pos{color:var(--pos)} .neg{color:var(--neg)} .zero{color:var(--ink-3)}
+button{font:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+
+/* ---------- header ---------- */
+.top{
+  position:sticky; top:env(safe-area-inset-top,0px); z-index:20;
+  background:var(--bg); border-bottom:1px solid var(--line-soft);
+}
+.top-in{
+  max-width:860px;margin:0 auto;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-block:10px;
+  display:flex;align-items:center;gap:12px;
+}
+.brand{display:flex;align-items:baseline;gap:7px;min-width:0}
+.brand b{font-size:15px;font-weight:700;letter-spacing:-.02em}
+.brand .alpha{color:var(--accent)}
+.brand span{font-size:12px;color:var(--ink-3);white-space:nowrap}
+.top-right{margin-left:auto;display:flex;align-items:center;gap:8px}
+.sync{font-size:11px;color:var(--ink-3);display:flex;align-items:center;gap:5px;white-space:nowrap}
+.sync i{width:6px;height:6px;border-radius:50%;background:var(--ink-3);display:block;flex:none}
+.sync.ok i{background:var(--pos)}
+.sync.warn i{background:var(--accent)}
+.icon-btn{
+  width:32px;height:32px;display:grid;place-items:center;border-radius:8px;
+  border:1px solid var(--line);background:var(--surface);color:var(--ink-2);
+}
+.icon-btn:hover{color:var(--ink);border-color:var(--ink-3)}
+.icon-btn svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- hero ---------- */
+.hero{padding-block:22px 18px;border-bottom:1px solid var(--line-soft)}
+.hero-label{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+.hero-value{font-family:var(--font-num);font-variant-numeric:tabular-nums;font-size:clamp(38px,11vw,54px);font-weight:600;line-height:1.05;letter-spacing:-.03em;margin-top:4px}
+.hero-sub{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:10px;font-size:13px;color:var(--ink-2)}
+.hero-sub b{font-family:var(--font-num);font-variant-numeric:tabular-nums;font-weight:600}
+
+/* ---------- generic section ---------- */
+section{padding-block:22px;border-bottom:1px solid var(--line-soft)}
+section:last-of-type{border-bottom:0}
+.sec-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+.sec-head h2{font-size:15px}
+.sec-head p{margin:0;font-size:12px;color:var(--ink-3)}
+.sec-head .spacer{margin-left:auto}
+
+/* ---------- entry card ---------- */
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:14px}
+.entry-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.entry-grid .f-date{grid-column:1 / -1}
+@media (min-width:620px){
+  .entry-grid{grid-template-columns:1.1fr 1fr 1fr 1.2fr auto;align-items:end}
+  .entry-grid .f-date{grid-column:auto}
+}
+.field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.field label{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);font-weight:600}
+.field input{
+  width:100%;padding:9px 10px;border-radius:9px;border:1px solid var(--line);
+  background:var(--surface-2);color:var(--ink);font:inherit;
+  font-family:var(--font-num);font-variant-numeric:tabular-nums;font-size:14px;
+}
+.field input.txt{font-family:var(--font-ui)}
+.field input:focus{border-color:var(--accent);outline:none}
+.btn{
+  align-self:end;
+  padding:10px 16px;border-radius:9px;border:1px solid transparent;
+  background:var(--accent);color:var(--accent-ink);font-weight:600;font-size:14px;white-space:nowrap;
+}
+.btn:hover{filter:brightness(1.07)}
+.btn.ghost{background:transparent;border-color:var(--line);color:var(--ink-2);font-weight:500}
+.btn.ghost:hover{color:var(--ink);border-color:var(--ink-3)}
+.entry-note{margin:10px 0 0;font-size:12px;color:var(--ink-3);min-height:1.2em}
+.entry-note.live{color:var(--accent)}
+
+/* ---------- kpi ---------- */
+.kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--line-soft);border:1px solid var(--line-soft);border-radius:var(--radius);overflow:hidden}
+@media (min-width:560px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.kpi{background:var(--bg);padding:13px 14px;min-width:0}
+.kpi dt{font-size:11px;color:var(--ink-3);font-weight:600;letter-spacing:.05em;margin:0}
+.kpi dd{margin:3px 0 0;font-family:var(--font-num);font-variant-numeric:tabular-nums;font-size:19px;font-weight:600;letter-spacing:-.02em}
+.kpi small{display:block;font-family:var(--font-ui);font-size:11px;color:var(--ink-3);font-weight:400;letter-spacing:0;margin-top:2px}
+
+/* ---------- charts ---------- */
+.chart-box{position:relative;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:12px 10px 8px}
+.chart-box svg{display:block;width:100%;height:auto;touch-action:pan-y}
+.gridline{stroke:var(--grid);stroke-width:1}
+.axis-text{fill:var(--ink-3);font-family:var(--font-num);font-size:10px;font-variant-numeric:tabular-nums}
+.zeroline{stroke:var(--ink-3);stroke-width:1;opacity:.55}
+.tip{
+  position:absolute;pointer-events:none;z-index:5;opacity:0;transition:opacity .09s linear;
+  background:var(--surface-2);border:1px solid var(--line);border-radius:8px;
+  padding:7px 9px;font-size:12px;box-shadow:var(--shadow);white-space:nowrap;
+}
+.tip.on{opacity:1}
+.tip .t-d{color:var(--ink-3);font-size:11px;margin-bottom:2px}
+.tip .t-v{font-family:var(--font-num);font-variant-numeric:tabular-nums;font-weight:600;font-size:13px}
+.tip .t-x{color:var(--ink-2);font-size:11px;margin-top:2px;font-family:var(--font-num)}
+
+/* ---------- tables ---------- */
+.tscroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th{
+  text-align:right;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);
+  font-weight:600;padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap;
+  background:var(--surface);position:sticky;top:0;z-index:1;
+}
+th:first-child,td:first-child{text-align:left}
+th.l{text-align:left}
+td{padding:0;border-bottom:1px solid var(--line-soft);text-align:right;white-space:nowrap}
+tbody tr:last-child td{border-bottom:0}
+.cell{padding:8px 10px;font-family:var(--font-num);font-variant-numeric:tabular-nums}
+.cell.ui{font-family:var(--font-ui)}
+tbody tr.today{background:var(--accent-soft)}
+tbody tr.has-drop td:first-child .cell::before{content:"";display:inline-block;width:5px;height:5px;border-radius:50%;background:var(--accent);margin-right:6px;vertical-align:middle}
+tfoot td{padding:9px 10px;font-family:var(--font-num);font-variant-numeric:tabular-nums;font-weight:600;border-top:1px solid var(--line);background:var(--surface-2)}
+tfoot td:first-child{font-family:var(--font-ui);font-size:12px;color:var(--ink-2)}
+
+/* editable inputs inside the ledger */
+td input{
+  width:100%;min-width:62px;padding:8px 10px;border:0;background:transparent;color:var(--ink);
+  font-family:var(--font-num);font-variant-numeric:tabular-nums;font-size:13px;text-align:right;
+  border-radius:0;
+}
+td input.txt{font-family:var(--font-ui);text-align:left;min-width:86px;text-transform:uppercase}
+td input::placeholder{color:var(--ink-3);opacity:.5}
+td input:focus{outline:none;background:var(--accent-soft);box-shadow:inset 0 0 0 1px var(--accent)}
+td.ed{padding:0}
+
+/* ---------- month switcher ---------- */
+.mswitch{display:flex;align-items:center;gap:6px}
+.mswitch select{
+  font:inherit;font-size:13px;padding:6px 8px;border-radius:8px;border:1px solid var(--line);
+  background:var(--surface);color:var(--ink);font-family:var(--font-num);
+}
+.nav-btn{width:30px;height:30px;display:grid;place-items:center;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink-2)}
+.nav-btn:hover:not(:disabled){color:var(--ink);border-color:var(--ink-3)}
+.nav-btn:disabled{opacity:.35;cursor:default}
+.nav-btn svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* ---------- data tools ---------- */
+.tools{display:flex;flex-wrap:wrap;gap:8px}
+.io-out{
+  width:100%;margin-top:10px;min-height:110px;padding:10px;border-radius:9px;border:1px solid var(--line);
+  background:var(--surface-2);color:var(--ink-2);font-family:var(--font-num);font-size:11px;line-height:1.45;resize:vertical;
+}
+.hint{font-size:12px;color:var(--ink-3);margin:10px 0 0;line-height:1.6}
+.hint code{font-family:var(--font-num);font-size:11px;background:var(--surface-2);padding:1px 5px;border-radius:4px}
+
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="top">
+  <div class="top-in">
+    <span class="brand"><b>Binance<span class="alpha">Alpha</span> 帳本</b><span id="brand-range"></span></span>
+    <span class="top-right">
+      <span class="sync" id="sync"><i></i><span id="sync-text">本機儲存</span></span>
+      <button class="icon-btn" id="theme-btn" type="button" aria-label="切換深淺色">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"/></svg>
+      </button>
+    </span>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div class="hero">
+    <p class="hero-label">Total return · 累計總回報</p>
+    <div class="hero-value num" id="hero-total">—</div>
+    <div class="hero-sub">
+      <span>本月 <b id="hero-month">—</b></span>
+      <span>本月成本 <b id="hero-mcost">—</b></span>
+      <span>本月空投 <b id="hero-mdrop">—</b></span>
+      <span id="hero-today">今日未填</span>
+    </div>
+  </div>
+
+  <section>
+    <div class="sec-head">
+      <h2>記一筆</h2>
+      <p>成本填負數，空投價值填正數</p>
+    </div>
+    <div class="card">
+      <div class="entry-grid">
+        <div class="field f-date">
+          <label for="in-date">Date</label>
+          <input type="date" id="in-date">
+        </div>
+        <div class="field">
+          <label for="in-cost">Cost 成本</label>
+          <input type="text" inputmode="decimal" id="in-cost" placeholder="-3.6">
+        </div>
+        <div class="field">
+          <label for="in-drop">Airdrop 空投</label>
+          <input type="text" inputmode="decimal" id="in-drop" placeholder="0">
+        </div>
+        <div class="field">
+          <label for="in-coin">Coin 幣種</label>
+          <input type="text" class="txt" id="in-coin" placeholder="例 MMT">
+        </div>
+        <button class="btn" id="btn-save" type="button">儲存</button>
+      </div>
+      <p class="entry-note" id="entry-note"></p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2>整體數字</h2></div>
+    <dl class="kpis" id="kpis"></dl>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>累計總回報</h2>
+      <p id="cum-caption"></p>
+    </div>
+    <div class="chart-box">
+      <svg id="chart-cum" role="img" aria-label="累計總回報折線圖"></svg>
+      <div class="tip" id="tip-cum"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>每月淨收益</h2>
+      <p>零線以上為正、以下為負</p>
+    </div>
+    <div class="chart-box">
+      <svg id="chart-mon" role="img" aria-label="每月淨收益長條圖"></svg>
+      <div class="tip" id="tip-mon"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2>月度匯總</h2></div>
+    <div class="tscroll">
+      <table id="tbl-month">
+        <thead><tr>
+          <th>Month</th><th>Cost</th><th>Airdrop value</th><th>Drops</th><th>Monthly return</th><th>Total return</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head">
+      <h2>每日明細</h2>
+      <span class="spacer"></span>
+      <span class="mswitch">
+        <button class="nav-btn" id="m-prev" type="button" aria-label="上一個月">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7"/></svg>
+        </button>
+        <select id="m-select" aria-label="選擇月份"></select>
+        <button class="nav-btn" id="m-next" type="button" aria-label="下一個月">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
+        </button>
+      </span>
+    </div>
+    <div class="tscroll">
+      <table id="tbl-day">
+        <thead><tr>
+          <th>Date</th><th>Cost</th><th>Airdrop value</th><th class="l">Coin</th><th>Day pnl</th><th>Cumulative</th>
+        </tr></thead>
+        <tbody></tbody>
+        <tfoot></tfoot>
+      </table>
+    </div>
+    <p class="hint">灰色欄位可直接改，Day pnl = Cost + Airdrop value，Cumulative 每月從零重算。留空等於 0。</p>
+  </section>
+
+  <section>
+    <div class="sec-head"><h2>資料</h2></div>
+    <div class="tools">
+      <button class="btn ghost" id="btn-csv" type="button">匯出 CSV</button>
+      <button class="btn ghost" id="btn-json" type="button">匯出 JSON</button>
+      <button class="btn ghost" id="btn-import" type="button">匯入 JSON</button>
+      <input type="file" id="file-import" accept=".json,application/json" hidden>
+    </div>
+    <textarea class="io-out" id="io-out" readonly hidden aria-label="匯出內容"></textarea>
+    <p class="hint" id="store-hint"></p>
+  </section>
+
+</div>
+
+<script id="seed-data" type="application/json">[]</script>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ========== helpers ========== */
+  var $ = function (id) { return document.getElementById(id); };
+  var pad = function (n) { return n < 10 ? "0" + n : "" + n; };
+  var round2 = function (n) { return Math.round((n + Number.EPSILON) * 100) / 100; };
+
+  function fmt(n, forceSign) {
+    if (!isFinite(n)) n = 0;
+    var v = round2(n);
+    var s = Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (v < 0) return "-" + s;
+    return (forceSign && v > 0 ? "+" : "") + s;
+  }
+  function fmtShort(n) {
+    var a = Math.abs(n);
+    if (a >= 1000) return (n / 1000).toFixed(a >= 10000 ? 0 : 1).replace(/\.0$/, "") + "k";
+    return String(Math.round(n));
+  }
+  function signClass(n) { return n > 0.0001 ? "pos" : (n < -0.0001 ? "neg" : "zero"); }
+
+  function parseNum(s) {
+    if (s == null) return 0;
+    var t = String(s).trim().replace(/[,\s$]/g, "");
+    if (t === "" || t === "-" || t === "." || t === "/") return 0;
+    var v = parseFloat(t);
+    return isFinite(v) ? round2(v) : 0;
+  }
+  function todayISO() {
+    var d = new Date();
+    return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+  }
+  function ymOf(date) { return date.slice(0, 7); }
+  function daysInMonth(ym) {
+    var p = ym.split("-");
+    return new Date(+p[0], +p[1], 0).getDate();
+  }
+  function monthLabel(ym) {
+    var p = ym.split("-");
+    return p[0].slice(2) + "/" + p[1];
+  }
+  function shiftMonth(ym, delta) {
+    var p = ym.split("-"), y = +p[0], m = +p[1] - 1 + delta;
+    y += Math.floor(m / 12); m = ((m % 12) + 12) % 12;
+    return y + "-" + pad(m + 1);
+  }
+
+  /* ========== state ========== */
+  // entries: Map "YYYY-MM-DD" -> {c: cost, a: airdrop, n: coin}
+  var entries = new Map();
+  var viewMonth = ymOf(todayISO());
+  var LS_KEY = "alpha-ledger-v1";
+  var LS_THEME = "alpha-ledger-theme";
+  var db = null;          // db capability namespace, when available
+  var dbWritable = true;  // flipped off if a write is refused
+  var writeChains = {};   // per-month promise chain, one write at a time
+
+  function loadSeed() {
+    try {
+      var raw = JSON.parse($("seed-data").textContent);
+      var m = new Map();
+      for (var i = 0; i < raw.length; i++) {
+        var r = raw[i];
+        m.set(r[0], { c: r[1] || 0, a: r[2] || 0, n: r[3] || "" });
+      }
+      return m;
+    } catch (e) { return new Map(); }
+  }
+
+  function readLocal() {
+    try {
+      var s = localStorage.getItem(LS_KEY);
+      if (!s) return null;
+      var o = JSON.parse(s);
+      if (!o || typeof o !== "object" || !o.days) return null;
+      var m = new Map();
+      Object.keys(o.days).forEach(function (k) {
+        var r = o.days[k];
+        m.set(k, { c: +r.c || 0, a: +r.a || 0, n: r.n || "" });
+      });
+      return m;
+    } catch (e) { return null; }
+  }
+  function writeLocal() {
+    try {
+      var days = {};
+      entries.forEach(function (v, k) { days[k] = { c: v.c, a: v.a, n: v.n }; });
+      localStorage.setItem(LS_KEY, JSON.stringify({ v: 1, days: days }));
+    } catch (e) { /* private window, blocked storage — the page still works */ }
+  }
+
+  /* ========== derived data ========== */
+  function sortedDates() {
+    return Array.from(entries.keys()).sort();
+  }
+  function monthKeys() {
+    var set = {};
+    entries.forEach(function (v, k) { set[k.slice(0, 7)] = 1; });
+    var ks = Object.keys(set).sort();
+    var cur = ymOf(todayISO());
+    if (ks.indexOf(cur) === -1) ks.push(cur);
+    return ks.sort();
+  }
+  function monthStats() {
+    var out = {}, order = [];
+    sortedDates().forEach(function (d) {
+      var ym = d.slice(0, 7), e = entries.get(d);
+      if (!out[ym]) { out[ym] = { ym: ym, cost: 0, drop: 0, net: 0, drops: 0 }; order.push(ym); }
+      out[ym].cost += e.c; out[ym].drop += e.a; out[ym].net += e.c + e.a;
+      if (e.a > 0) out[ym].drops++;
+    });
+    var running = 0;
+    order.forEach(function (ym) { running += out[ym].net; out[ym].total = running; });
+    return { map: out, order: order };
+  }
+  function cumulativeSeries() {
+    var run = 0, pts = [];
+    sortedDates().forEach(function (d) {
+      var e = entries.get(d);
+      run += e.c + e.a;
+      pts.push({ d: d, v: run, day: e.c + e.a, coin: e.n });
+    });
+    return pts;
+  }
+  function totals() {
+    var cost = 0, drop = 0, drops = 0, best = null;
+    entries.forEach(function (e, d) {
+      cost += e.c; drop += e.a;
+      if (e.a > 0) { drops++; if (!best || e.a > best.a) best = { d: d, a: e.a, n: e.n }; }
+    });
+    return { cost: cost, drop: drop, net: cost + drop, drops: drops, best: best, days: entries.size };
+  }
+
+  /* ========== rendering ========== */
+  function renderHero() {
+    var t = totals();
+    var ms = monthStats();
+    var cur = ymOf(todayISO());
+    var m = ms.map[cur] || { cost: 0, drop: 0, net: 0 };
+    var hv = $("hero-total");
+    hv.textContent = fmt(t.net, true);
+    hv.className = "hero-value num " + signClass(t.net);
+
+    var hm = $("hero-month");
+    hm.textContent = fmt(m.net, true);
+    hm.className = signClass(m.net);
+    $("hero-mcost").textContent = fmt(m.cost);
+    $("hero-mdrop").textContent = fmt(m.drop);
+
+    var te = entries.get(todayISO());
+    var ht = $("hero-today");
+    if (te && (te.c !== 0 || te.a !== 0 || te.n)) {
+      ht.textContent = "今日 " + fmt(te.c + te.a, true) + (te.n ? " · " + te.n : "");
+      ht.className = signClass(te.c + te.a);
+    } else {
+      ht.textContent = "今日未填";
+      ht.className = "zero";
+    }
+
+    var ds = sortedDates();
+    $("brand-range").textContent = ds.length ? ds[0].slice(2).replace(/-/g, "/") + " – " + ds[ds.length - 1].slice(2).replace(/-/g, "/") : "";
+  }
+
+  function renderKpis() {
+    var t = totals();
+    var ds = sortedDates();
+    var avgCost = ds.length ? t.cost / ds.length : 0;
+    var avgDrop = t.drops ? t.drop / t.drops : 0;
+    var items = [
+      { k: "總空投價值", v: fmt(t.drop), c: "pos", s: t.drops + " 次空投" },
+      { k: "總刷分成本", v: fmt(t.cost), c: "neg", s: ds.length + " 天紀錄" },
+      { k: "平均每次空投", v: fmt(avgDrop), c: "", s: "每筆空投均值" },
+      { k: "日均成本", v: fmt(avgCost), c: "", s: "每天平均支出" },
+      { k: "成本回收倍數", v: t.cost < 0 ? (t.drop / Math.abs(t.cost)).toFixed(2) + "×" : "—", c: "", s: "空投 ÷ 成本" },
+      { k: "最大單筆空投", v: t.best ? fmt(t.best.a) : "—", c: "pos", s: t.best ? (t.best.n || t.best.d) : "" }
+    ];
+    $("kpis").innerHTML = items.map(function (it) {
+      return '<div class="kpi"><dt>' + it.k + '</dt><dd class="' + it.c + '">' + it.v +
+        '<small>' + esc(it.s) + '</small></dd></div>';
+    }).join("");
+  }
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
+  function renderMonthTable() {
+    var ms = monthStats();
+    var rows = ms.order.map(function (ym) {
+      var m = ms.map[ym];
+      return '<tr><td><span class="cell ui">' + ym + '</span></td>' +
+        '<td><span class="cell neg">' + fmt(m.cost) + '</span></td>' +
+        '<td><span class="cell pos">' + fmt(m.drop) + '</span></td>' +
+        '<td><span class="cell">' + m.drops + '</span></td>' +
+        '<td><span class="cell ' + signClass(m.net) + '">' + fmt(m.net, true) + '</span></td>' +
+        '<td><span class="cell ' + signClass(m.total) + '">' + fmt(m.total) + '</span></td></tr>';
+    }).join("");
+    $("tbl-month").querySelector("tbody").innerHTML = rows ||
+      '<tr><td colspan="6"><span class="cell ui zero">還沒有資料</span></td></tr>';
+  }
+
+  function renderDayTable() {
+    var n = daysInMonth(viewMonth);
+    var run = 0, cost = 0, drop = 0;
+    var today = todayISO();
+    var html = "";
+    for (var i = 1; i <= n; i++) {
+      var date = viewMonth + "-" + pad(i);
+      var e = entries.get(date);
+      var c = e ? e.c : 0, a = e ? e.a : 0, coin = e ? e.n : "";
+      var pnl = c + a;
+      run += pnl; cost += c; drop += a;
+      var filled = !!e;
+      html += '<tr class="' + (date === today ? "today " : "") + (a > 0 ? "has-drop" : "") + '" data-date="' + date + '">' +
+        '<td><span class="cell ui">' + pad(i) + '</span></td>' +
+        '<td class="ed"><input type="text" inputmode="decimal" data-f="c" value="' + (filled && c !== 0 ? c : "") + '" placeholder="0" aria-label="' + date + ' 成本"></td>' +
+        '<td class="ed"><input type="text" inputmode="decimal" data-f="a" value="' + (filled && a !== 0 ? a : "") + '" placeholder="0" aria-label="' + date + ' 空投價值"></td>' +
+        '<td class="ed"><input type="text" class="txt" data-f="n" value="' + esc(coin) + '" placeholder="—" aria-label="' + date + ' 幣種"></td>' +
+        '<td><span class="cell ' + (filled ? signClass(pnl) : "zero") + '">' + (filled ? fmt(pnl, true) : "—") + '</span></td>' +
+        '<td><span class="cell ' + signClass(run) + '">' + fmt(run) + '</span></td>' +
+        '</tr>';
+    }
+    $("tbl-day").querySelector("tbody").innerHTML = html;
+    $("tbl-day").querySelector("tfoot").innerHTML =
+      '<tr><td>' + viewMonth + ' 合計</td>' +
+      '<td class="neg">' + fmt(cost) + '</td>' +
+      '<td class="pos">' + fmt(drop) + '</td>' +
+      '<td></td>' +
+      '<td class="' + signClass(run) + '">' + fmt(run, true) + '</td>' +
+      '<td></td></tr>';
+
+    var ks = monthKeys();
+    $("m-prev").disabled = ks.indexOf(viewMonth) <= 0;
+    $("m-next").disabled = ks.indexOf(viewMonth) === ks.length - 1;
+  }
+
+  // Recompute the derived cells in place, so an input the user is tabbing
+  // through is never torn out of the DOM mid-edit.
+  function refreshDayComputed() {
+    var rows = $("tbl-day").querySelectorAll("tbody tr");
+    var run = 0, cost = 0, drop = 0;
+    for (var i = 0; i < rows.length; i++) {
+      var tr = rows[i];
+      var date = tr.getAttribute("data-date");
+      var e = entries.get(date);
+      var c = e ? e.c : 0, a = e ? e.a : 0;
+      var pnl = c + a;
+      run += pnl; cost += c; drop += a;
+      var cells = tr.querySelectorAll("td > span.cell");
+      // cells[0] = date, cells[1] = day pnl, cells[2] = cumulative
+      cells[1].className = "cell " + (e ? signClass(pnl) : "zero");
+      cells[1].textContent = e ? fmt(pnl, true) : "—";
+      cells[2].className = "cell " + signClass(run);
+      cells[2].textContent = fmt(run);
+      tr.classList.toggle("has-drop", a > 0);
+    }
+    var ft = $("tbl-day").querySelectorAll("tfoot td");
+    if (ft.length === 6) {
+      ft[1].textContent = fmt(cost);
+      ft[2].textContent = fmt(drop);
+      ft[4].className = signClass(run);
+      ft[4].textContent = fmt(run, true);
+    }
+  }
+
+  function renderMonthSelect() {
+    var ks = monthKeys();
+    if (ks.indexOf(viewMonth) === -1) viewMonth = ks[ks.length - 1];
+    $("m-select").innerHTML = ks.map(function (k) {
+      return '<option value="' + k + '"' + (k === viewMonth ? " selected" : "") + ">" + k + "</option>";
+    }).join("");
+  }
+
+  /* ========== charts ========== */
+  function svgEl(name, attrs) {
+    var el = document.createElementNS("http://www.w3.org/2000/svg", name);
+    for (var k in attrs) if (attrs[k] !== null && attrs[k] !== undefined) el.setAttribute(k, attrs[k]);
+    return el;
+  }
+  function niceTicks(min, max, count) {
+    if (min === max) { min -= 1; max += 1; }
+    var span = max - min;
+    var step = Math.pow(10, Math.floor(Math.log10(span / count)));
+    var err = span / count / step;
+    if (err >= 7.5) step *= 10; else if (err >= 3.5) step *= 5; else if (err >= 1.5) step *= 2;
+    var lo = Math.floor(min / step) * step, hi = Math.ceil(max / step) * step;
+    var ticks = [];
+    for (var v = lo; v <= hi + step / 2; v += step) ticks.push(round2(v));
+    return { ticks: ticks, lo: lo, hi: hi };
+  }
+
+  var cumGeom = null;
+  function drawCumulative() {
+    var svg = $("chart-cum");
+    var box = svg.parentNode.getBoundingClientRect();
+    var W = Math.max(280, Math.round(box.width) - 20);
+    var H = W < 480 ? 190 : 240;
+    var pts = cumulativeSeries();
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+    svg.setAttribute("height", H);
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    cumGeom = null;
+    if (pts.length < 2) {
+      svg.appendChild(svgEl("text", { x: W / 2, y: H / 2, "text-anchor": "middle", class: "axis-text" })).textContent = "資料不足";
+      $("cum-caption").textContent = "";
+      return;
+    }
+
+    var padL = 42, padR = 14, padT = 12, padB = 20;
+    var iw = W - padL - padR, ih = H - padT - padB;
+    var vmin = Infinity, vmax = -Infinity;
+    pts.forEach(function (p) { if (p.v < vmin) vmin = p.v; if (p.v > vmax) vmax = p.v; });
+    // A single near-zero dip should not drag a whole gridline band below the axis.
+    var span = Math.max(1, vmax - Math.min(vmin, 0));
+    vmin = vmin > -span * 0.04 ? 0 : vmin;
+    var sc = niceTicks(vmin, vmax, 4);
+    var x = function (i) { return padL + (iw * i) / (pts.length - 1); };
+    var y = function (v) { return padT + ih - ((v - sc.lo) / (sc.hi - sc.lo)) * ih; };
+
+    sc.ticks.forEach(function (t) {
+      svg.appendChild(svgEl("line", { x1: padL, x2: padL + iw, y1: y(t), y2: y(t), class: t === 0 ? "zeroline" : "gridline" }));
+      var lbl = svgEl("text", { x: padL - 6, y: y(t) + 3.5, "text-anchor": "end", class: "axis-text" });
+      lbl.textContent = fmtShort(t);
+      svg.appendChild(lbl);
+    });
+
+    // month boundaries on the x axis, thinned so labels never collide
+    var marks = [];
+    for (var i = 1; i < pts.length; i++) {
+      if (pts[i].d.slice(0, 7) !== pts[i - 1].d.slice(0, 7)) marks.push(i);
+    }
+    var every = Math.max(1, Math.ceil(marks.length / Math.floor(iw / 44)));
+    marks.forEach(function (i, k) {
+      if (k % every) return;
+      var lbl = svgEl("text", { x: x(i), y: H - 6, "text-anchor": "middle", class: "axis-text" });
+      lbl.textContent = monthLabel(pts[i].d.slice(0, 7));
+      svg.appendChild(lbl);
+    });
+
+    var dLine = "", dArea = "";
+    pts.forEach(function (p, i) {
+      var px = x(i).toFixed(2), py = y(p.v).toFixed(2);
+      dLine += (i ? "L" : "M") + px + " " + py;
+    });
+    dArea = dLine + "L" + x(pts.length - 1).toFixed(2) + " " + y(sc.lo).toFixed(2) + "L" + x(0).toFixed(2) + " " + y(sc.lo).toFixed(2) + "Z";
+
+    var gid = "cum-grad";
+    var defs = svgEl("defs", {});
+    var grad = svgEl("linearGradient", { id: gid, x1: 0, y1: 0, x2: 0, y2: 1 });
+    grad.appendChild(svgEl("stop", { offset: "0%", style: "stop-color:var(--accent);stop-opacity:.28" }));
+    grad.appendChild(svgEl("stop", { offset: "100%", style: "stop-color:var(--accent);stop-opacity:0" }));
+    defs.appendChild(grad); svg.appendChild(defs);
+
+    svg.appendChild(svgEl("path", { d: dArea, style: "fill:url(#" + gid + ");stroke:none" }));
+    svg.appendChild(svgEl("path", { d: dLine, style: "fill:none;stroke:var(--accent);stroke-width:2;stroke-linejoin:round;stroke-linecap:round" }));
+
+    var last = pts[pts.length - 1];
+    svg.appendChild(svgEl("circle", { cx: x(pts.length - 1), cy: y(last.v), r: 4, style: "fill:var(--accent);stroke:var(--surface);stroke-width:2" }));
+    var endLbl = svgEl("text", { x: x(pts.length - 1) - 6, y: y(last.v) - 9, "text-anchor": "end", class: "axis-text" });
+    endLbl.setAttribute("style", "fill:var(--ink);font-weight:600;font-size:11px");
+    endLbl.textContent = fmt(last.v, true);
+    svg.appendChild(endLbl);
+
+    var hairline = svgEl("line", { y1: padT, y2: padT + ih, opacity: 0, style: "stroke:var(--ink-3);stroke-width:1" });
+    var hairdot = svgEl("circle", { r: 4, opacity: 0, style: "fill:var(--accent);stroke:var(--surface);stroke-width:2" });
+    svg.appendChild(hairline); svg.appendChild(hairdot);
+
+    cumGeom = { pts: pts, x: x, y: y, W: W, H: H, padL: padL, iw: iw, hairline: hairline, hairdot: hairdot };
+    $("cum-caption").textContent = pts[0].d + " 起 · " + pts.length + " 天";
+  }
+
+  function bindCumHover() {
+    var svg = $("chart-cum"), tip = $("tip-cum");
+    function move(ev) {
+      if (!cumGeom) return;
+      var r = svg.getBoundingClientRect();
+      var px = ((ev.clientX - r.left) / r.width) * cumGeom.W;
+      var frac = (px - cumGeom.padL) / cumGeom.iw;
+      var i = Math.round(frac * (cumGeom.pts.length - 1));
+      if (i < 0) i = 0;
+      if (i > cumGeom.pts.length - 1) i = cumGeom.pts.length - 1;
+      var p = cumGeom.pts[i];
+      var sx = cumGeom.x(i), sy = cumGeom.y(p.v);
+      cumGeom.hairline.setAttribute("x1", sx); cumGeom.hairline.setAttribute("x2", sx);
+      cumGeom.hairline.setAttribute("opacity", ".45");
+      cumGeom.hairdot.setAttribute("cx", sx); cumGeom.hairdot.setAttribute("cy", sy);
+      cumGeom.hairdot.setAttribute("opacity", "1");
+      tip.className = "tip on";
+      tip.innerHTML = '<div class="t-d">' + p.d + (p.coin ? " · " + esc(p.coin) : "") + '</div>' +
+        '<div class="t-v">' + fmt(p.v) + '</div>' +
+        '<div class="t-x">當日 ' + fmt(p.day, true) + '</div>';
+      var boxW = tip.offsetWidth;
+      var leftPx = (sx / cumGeom.W) * r.width;
+      var maxL = r.width - boxW - 4;
+      tip.style.left = Math.max(4, Math.min(maxL, leftPx - boxW / 2)) + "px";
+      tip.style.top = Math.max(4, (sy / cumGeom.H) * r.height - tip.offsetHeight - 10) + "px";
+    }
+    function leave() {
+      tip.className = "tip";
+      if (cumGeom) { cumGeom.hairline.setAttribute("opacity", 0); cumGeom.hairdot.setAttribute("opacity", 0); }
+    }
+    svg.addEventListener("pointermove", move);
+    svg.addEventListener("pointerdown", move);
+    svg.addEventListener("pointerleave", leave);
+  }
+
+  var monGeom = null;
+  function drawMonthly() {
+    var svg = $("chart-mon"), tip = $("tip-mon");
+    var box = svg.parentNode.getBoundingClientRect();
+    var W = Math.max(280, Math.round(box.width) - 20);
+    var H = W < 480 ? 190 : 230;
+    var ms = monthStats();
+    var data = ms.order.map(function (k) { return ms.map[k]; });
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+    svg.setAttribute("height", H);
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+    monGeom = null;
+    tip.className = "tip";
+    if (!data.length) return;
+
+    var padL = 42, padR = 10, padT = 16, padB = 22;
+    var iw = W - padL - padR, ih = H - padT - padB;
+    var vmin = 0, vmax = 0;
+    data.forEach(function (m) { if (m.net < vmin) vmin = m.net; if (m.net > vmax) vmax = m.net; });
+    var sc = niceTicks(vmin, vmax, 4);
+    var y = function (v) { return padT + ih - ((v - sc.lo) / (sc.hi - sc.lo)) * ih; };
+    var slot = iw / data.length;
+    var bw = Math.max(5, Math.min(34, slot - 4));
+
+    sc.ticks.forEach(function (t) {
+      svg.appendChild(svgEl("line", { x1: padL, x2: padL + iw, y1: y(t), y2: y(t), class: t === 0 ? "zeroline" : "gridline" }));
+      var lbl = svgEl("text", { x: padL - 6, y: y(t) + 3.5, "text-anchor": "end", class: "axis-text" });
+      lbl.textContent = fmtShort(t);
+      svg.appendChild(lbl);
+    });
+
+    var y0 = y(0);
+    var best = data.reduce(function (a, b) { return b.net > a.net ? b : a; });
+    var worst = data.reduce(function (a, b) { return b.net < a.net ? b : a; });
+    var everyLbl = Math.max(1, Math.ceil(data.length / Math.floor(iw / 36)));
+
+    var bars = [];
+    data.forEach(function (m, i) {
+      var cx = padL + slot * i + slot / 2;
+      var yv = y(m.net);
+      var top = Math.min(y0, yv), h = Math.max(1.5, Math.abs(y0 - yv));
+      var pos = m.net >= 0;
+      var r = Math.min(4, bw / 2, h);
+      // rounded only on the data end, square at the baseline
+      var x0 = cx - bw / 2, x1 = cx + bw / 2;
+      var d = pos
+        ? "M" + x0 + " " + (top + h) + "V" + (top + r) + "a" + r + " " + r + " 0 0 1 " + r + " " + (-r) + "h" + (bw - 2 * r) + "a" + r + " " + r + " 0 0 1 " + r + " " + r + "V" + (top + h) + "Z"
+        : "M" + x0 + " " + top + "V" + (top + h - r) + "a" + r + " " + r + " 0 0 0 " + r + " " + r + "h" + (bw - 2 * r) + "a" + r + " " + r + " 0 0 0 " + r + " " + (-r) + "V" + top + "Z";
+      svg.appendChild(svgEl("path", { d: d, style: "fill:" + (pos ? "var(--pos-mark)" : "var(--neg-mark)") }));
+      bars.push({ m: m, cx: cx, top: top, h: h, pos: pos });
+
+      if (i % everyLbl === 0) {
+        var lbl = svgEl("text", { x: cx, y: H - 7, "text-anchor": "middle", class: "axis-text" });
+        lbl.textContent = monthLabel(m.ym);
+        svg.appendChild(lbl);
+      }
+      if (m === best || m === worst) {
+        var vl = svgEl("text", { x: cx, y: pos ? top - 5 : top + h + 11, "text-anchor": "middle", class: "axis-text" });
+        vl.setAttribute("style", "fill:var(--ink);font-weight:600");
+        vl.textContent = fmt(m.net, true);
+        svg.appendChild(vl);
+      }
+    });
+    monGeom = { bars: bars, W: W, H: H, slot: slot, padL: padL };
+  }
+
+  function bindMonHover() {
+    var svg = $("chart-mon"), tip = $("tip-mon");
+    function move(ev) {
+      if (!monGeom) return;
+      var r = svg.getBoundingClientRect();
+      var px = ((ev.clientX - r.left) / r.width) * monGeom.W;
+      var i = Math.floor((px - monGeom.padL) / monGeom.slot);
+      if (i < 0 || i >= monGeom.bars.length) { tip.className = "tip"; return; }
+      var b = monGeom.bars[i], m = b.m;
+      tip.className = "tip on";
+      tip.innerHTML = '<div class="t-d">' + m.ym + '</div>' +
+        '<div class="t-v ' + signClass(m.net) + '">' + fmt(m.net, true) + '</div>' +
+        '<div class="t-x">成本 ' + fmt(m.cost) + ' · 空投 ' + fmt(m.drop) + ' · ' + m.drops + ' 次</div>';
+      var leftPx = (b.cx / monGeom.W) * r.width;
+      var boxW = tip.offsetWidth;
+      tip.style.left = Math.max(4, Math.min(r.width - boxW - 4, leftPx - boxW / 2)) + "px";
+      tip.style.top = Math.max(4, (b.top / monGeom.H) * r.height - tip.offsetHeight - 8) + "px";
+    }
+    svg.addEventListener("pointermove", move);
+    svg.addEventListener("pointerdown", move);
+    svg.addEventListener("pointerleave", function () { tip.className = "tip"; });
+  }
+
+  /* ========== persistence ========== */
+  function monthDoc(ym) {
+    var days = {};
+    entries.forEach(function (v, k) {
+      if (k.slice(0, 7) === ym) days[k] = { c: v.c, a: v.a, n: v.n };
+    });
+    return days;
+  }
+  function persist(ym) {
+    writeLocal();
+    if (!db || !dbWritable) return;
+    var days = monthDoc(ym);
+    var prev = writeChains[ym] || Promise.resolve();
+    writeChains[ym] = prev.then(function () {
+      var ref = db.doc("entries/" + ym);
+      if (!Object.keys(days).length) return ref.delete();
+      return ref.set({ days: days, updated: new Date().toISOString() });
+    }).catch(function (err) {
+      if (err && err.code === "invalid_argument") {
+        dbWritable = false;
+        setSync("warn", "唯讀，改動只留在本機");
+      } else {
+        setSync("warn", "雲端同步失敗，已存本機");
+      }
+    });
+  }
+
+  function setSync(kind, text) {
+    var el = $("sync");
+    el.className = "sync" + (kind ? " " + kind : "");
+    $("sync-text").textContent = text;
+  }
+
+  function applyDbSnapshot(snap) {
+    var next = new Map();
+    snap.docs.forEach(function (doc) {
+      var data = doc.data() || {};
+      var days = data.days || {};
+      Object.keys(days).forEach(function (k) {
+        var r = days[k] || {};
+        next.set(k, { c: +r.c || 0, a: +r.a || 0, n: r.n || "" });
+      });
+    });
+    if (!next.size) return false;
+    entries = next;
+    writeLocal();
+    return true;
+  }
+
+  function connectDb() {
+    if (!(window.claude && typeof window.claude.use === "function")) {
+      setSync("ok", "本機儲存");
+      $("store-hint").innerHTML = "資料存在這個瀏覽器裡。換裝置或清掉瀏覽器資料就不見了，記得定期按「匯出 JSON」留一份。";
+      return;
+    }
+    var slow = setTimeout(function () { setSync("warn", "雲端連線中…"); }, 10000);
+    window.claude.use("db").then(function (ns) {
+      if (!ns) {
+        clearTimeout(slow);
+        setSync("ok", "本機儲存");
+        $("store-hint").innerHTML = "這次開啟連不到雲端，改動只存在這個瀏覽器。要保險的話按「匯出 JSON」留一份。";
+        return;
+      }
+      db = ns;
+      $("store-hint").innerHTML = "資料存在這個頁面的雲端空間，換手機或電腦打開同一個連結都看得到。另外也會在瀏覽器留一份快取。";
+      var uploaded = false;
+      db.collection("entries").onSnapshot(function (snap) {
+        if (!snap.metadata.fromCache) { clearTimeout(slow); setSync("ok", "已同步"); }
+        if (snap.metadata.hasPendingWrites) return;
+        if (snap.empty) {
+          // Nothing stored yet: push the whole local history up once, so a later
+          // single-month write can never look like the entire dataset.
+          if (!snap.metadata.fromCache && !uploaded && entries.size && dbWritable) {
+            uploaded = true;
+            var months = {};
+            entries.forEach(function (v, k) { months[k.slice(0, 7)] = 1; });
+            Object.keys(months).forEach(persist);
+          }
+          return;
+        }
+        uploaded = true;
+        if (applyDbSnapshot(snap)) renderAll();
+      }, function (err) {
+        clearTimeout(slow);
+        db = null;
+        setSync("warn", err && err.code === "revoked" ? "雲端已停用，改用本機" : "雲端讀取失敗，改用本機");
+      });
+    }).catch(function () {
+      clearTimeout(slow);
+      setSync("ok", "本機儲存");
+    });
+  }
+
+  /* ========== editing ========== */
+  function setEntry(date, patch) {
+    var e = entries.get(date) || { c: 0, a: 0, n: "" };
+    if ("c" in patch) e.c = patch.c;
+    if ("a" in patch) e.a = patch.a;
+    if ("n" in patch) e.n = patch.n;
+    if (e.c === 0 && e.a === 0 && !e.n) entries.delete(date);
+    else entries.set(date, e);
+    persist(date.slice(0, 7));
+  }
+
+  function renderAll() {
+    renderHero();
+    renderKpis();
+    renderMonthTable();
+    renderMonthSelect();
+    renderDayTable();
+    drawCumulative();
+    drawMonthly();
+  }
+
+  function renderSummaryOnly() {
+    renderHero();
+    renderKpis();
+    renderMonthTable();
+    drawCumulative();
+    drawMonthly();
+  }
+
+  /* ========== events ========== */
+  var entryReflect = null;
+
+  function bindEntryCard() {
+    var dEl = $("in-date"), cEl = $("in-cost"), aEl = $("in-drop"), nEl = $("in-coin"), note = $("entry-note");
+    dEl.value = todayISO();
+
+    function reflect() {
+      var e = entries.get(dEl.value);
+      if (e) {
+        cEl.value = e.c !== 0 ? e.c : "";
+        aEl.value = e.a !== 0 ? e.a : "";
+        nEl.value = e.n || "";
+        note.className = "entry-note live";
+        note.textContent = dEl.value + " 已有紀錄，儲存會覆蓋。";
+      } else {
+        cEl.value = ""; aEl.value = ""; nEl.value = "";
+        note.className = "entry-note";
+        note.textContent = "";
+      }
+    }
+    reflect();
+    entryReflect = reflect;
+    dEl.addEventListener("change", reflect);
+
+    $("btn-save").addEventListener("click", function () {
+      var date = dEl.value;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        note.className = "entry-note live";
+        note.textContent = "請先選日期。";
+        return;
+      }
+      setEntry(date, { c: parseNum(cEl.value), a: parseNum(aEl.value), n: nEl.value.trim().toUpperCase() });
+      viewMonth = date.slice(0, 7);
+      renderAll();
+      note.className = "entry-note live";
+      var e = entries.get(date);
+      note.textContent = e ? (date + " 已存，當日 " + fmt(e.c + e.a, true)) : (date + " 已清空");
+    });
+
+    [cEl, aEl, nEl].forEach(function (el) {
+      el.addEventListener("keydown", function (ev) { if (ev.key === "Enter") $("btn-save").click(); });
+    });
+  }
+
+  function bindDayTable() {
+    var tb = $("tbl-day").querySelector("tbody");
+    tb.addEventListener("change", function (ev) {
+      var input = ev.target;
+      if (input.tagName !== "INPUT") return;
+      var date = input.closest("tr").getAttribute("data-date");
+      var f = input.getAttribute("data-f");
+      var patch = {};
+      if (f === "n") { patch.n = input.value.trim().toUpperCase(); input.value = patch.n; }
+      else {
+        var v = parseNum(input.value);
+        patch[f] = v;
+        input.value = v !== 0 ? v : "";
+      }
+      setEntry(date, patch);
+      refreshDayComputed();
+      renderSummaryOnly();
+    });
+    tb.addEventListener("keydown", function (ev) {
+      if (ev.key !== "Enter" || ev.target.tagName !== "INPUT") return;
+      ev.preventDefault();
+      ev.target.blur();
+    });
+  }
+
+  function bindMonthNav() {
+    $("m-select").addEventListener("change", function (e) {
+      viewMonth = e.target.value;
+      renderDayTable();
+    });
+    $("m-prev").addEventListener("click", function () {
+      viewMonth = shiftMonth(viewMonth, -1);
+      renderMonthSelect(); renderDayTable();
+    });
+    $("m-next").addEventListener("click", function () {
+      viewMonth = shiftMonth(viewMonth, 1);
+      renderMonthSelect(); renderDayTable();
+    });
+  }
+
+  /* ========== export / import ========== */
+  function buildCsv() {
+    var ms = monthStats();
+    var lines = ["DATE,COST,AIRDROP VALUE,COIN,DAY PNL,CUMULATIVE PNL,MONTHLY RETURN,TOTAL RETURN"];
+    var run = 0, prevYm = null;
+    var ds = sortedDates();
+    ds.forEach(function (d, i) {
+      var ym = d.slice(0, 7);
+      if (ym !== prevYm) { run = 0; prevYm = ym; }
+      var e = entries.get(d);
+      var pnl = e.c + e.a;
+      run += pnl;
+      var isLast = (i === ds.length - 1) || ds[i + 1].slice(0, 7) !== ym;
+      var coin = (e.n || "").indexOf(",") >= 0 ? '"' + e.n + '"' : (e.n || "");
+      lines.push([d, round2(e.c), round2(e.a), coin, round2(pnl), round2(run),
+        isLast ? round2(ms.map[ym].net) : "", isLast ? round2(ms.map[ym].total) : ""].join(","));
+    });
+    return lines.join("\n");
+  }
+  function buildJson() {
+    var days = {};
+    sortedDates().forEach(function (d) {
+      var e = entries.get(d);
+      days[d] = { c: round2(e.c), a: round2(e.a), n: e.n };
+    });
+    return JSON.stringify({ v: 1, exported: new Date().toISOString(), days: days }, null, 1);
+  }
+
+  function offerFile(filename, text, mime) {
+    var out = $("io-out");
+    function showInline(msg) {
+      out.hidden = false;
+      out.value = text;
+      out.focus();
+      out.setSelectionRange(0, 0);
+      $("store-hint").textContent = msg;
+    }
+    if (window.claude && typeof window.claude.use === "function") {
+      window.claude.use("downloads").then(function (dl) {
+        if (!dl) { showInline("這個環境不能直接下載，內容已列在下面，全選複製即可。"); return; }
+        dl.save({ filename: filename, data: text }).catch(function () {
+          showInline("下載被取消或不可用，內容已列在下面，全選複製即可。");
+        });
+      }).catch(function () { showInline("內容已列在下面，全選複製即可。"); });
+      return;
+    }
+    try {
+      var blob = new Blob([text], { type: mime });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+    } catch (e) {
+      showInline("內容已列在下面，全選複製即可。");
+    }
+  }
+
+  function bindTools() {
+    $("btn-csv").addEventListener("click", function () {
+      offerFile("binance-alpha-" + todayISO() + ".csv", buildCsv(), "text/csv");
+    });
+    $("btn-json").addEventListener("click", function () {
+      offerFile("binance-alpha-" + todayISO() + ".json", buildJson(), "application/json");
+    });
+    $("btn-import").addEventListener("click", function () { $("file-import").click(); });
+    $("file-import").addEventListener("change", function (ev) {
+      var f = ev.target.files && ev.target.files[0];
+      if (!f) return;
+      var fr = new FileReader();
+      fr.onload = function () {
+        try {
+          var o = JSON.parse(String(fr.result));
+          var days = o && o.days;
+          if (!days) throw new Error("格式不符");
+          var next = new Map();
+          Object.keys(days).forEach(function (k) {
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) return;
+            var r = days[k] || {};
+            next.set(k, { c: +r.c || 0, a: +r.a || 0, n: (r.n || "").toString().toUpperCase() });
+          });
+          if (!next.size) throw new Error("沒有可用的日期");
+          entries = next;
+          writeLocal();
+          var all = {};
+          next.forEach(function (v, k) { all[k.slice(0, 7)] = 1; });
+          Object.keys(all).forEach(persist);
+          renderAll();
+          $("store-hint").textContent = "已匯入 " + next.size + " 天的紀錄。";
+        } catch (err) {
+          $("store-hint").textContent = "這個檔讀不了：" + (err && err.message ? err.message : "格式不符") + "。需要匯出時產生的 JSON。";
+        }
+        ev.target.value = "";
+      };
+      fr.readAsText(f);
+    });
+  }
+
+  function bindTheme() {
+    var btn = $("theme-btn");
+    var saved = null;
+    try { saved = localStorage.getItem(LS_THEME); } catch (e) { }
+    if (saved === "light" || saved === "dark") document.documentElement.setAttribute("data-theme", saved);
+    btn.addEventListener("click", function () {
+      var cur = document.documentElement.getAttribute("data-theme");
+      var isDarkNow = cur ? cur === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;
+      var next = isDarkNow ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", next);
+      try { localStorage.setItem(LS_THEME, next); } catch (e) { }
+      drawCumulative(); drawMonthly();
+    });
+  }
+
+  /* ========== boot ========== */
+  entries = readLocal() || loadSeed();
+  viewMonth = ymOf(todayISO());
+  renderAll();
+  if (!entries.size) bootstrapFromFile();
+  bindEntryCard();
+  bindDayTable();
+  bindMonthNav();
+  bindTools();
+  bindTheme();
+  bindCumHover();
+  bindMonHover();
+  connectDb();
+
+  // First run on a fresh browser: pick up data.json if it was uploaded beside
+  // the page. Missing file is a normal case — the ledger just starts empty.
+  function bootstrapFromFile() {
+    if (!window.fetch || location.protocol === "file:") return;
+    fetch("./data.json", { cache: "no-store" }).then(function (r) {
+      if (!r.ok) throw new Error("no data file");
+      return r.json();
+    }).then(function (o) {
+      var days = o && o.days;
+      if (!days) return;
+      var next = new Map();
+      Object.keys(days).forEach(function (k) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) return;
+        var r = days[k] || {};
+        next.set(k, { c: +r.c || 0, a: +r.a || 0, n: (r.n || "").toString().toUpperCase() });
+      });
+      if (!next.size) return;
+      entries = next;
+      writeLocal();
+      viewMonth = ymOf(todayISO());
+      renderAll();
+    }).catch(function () { /* no data.json — start empty */ });
+  }
+
+  // Today is read from the device clock when the page renders, so a page left
+  // open across midnight has to be told the day moved on.
+  var lastDay = todayISO();
+  function checkDayRollover() {
+    var now = todayISO();
+    if (now === lastDay) return;
+    var prev = lastDay;
+    lastDay = now;
+    var dEl = $("in-date");
+    if (dEl && dEl.value === prev) {
+      dEl.value = now;
+      if (entryReflect) entryReflect();
+    }
+    if (viewMonth === ymOf(prev)) viewMonth = ymOf(now);
+    renderAll();
+  }
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) checkDayRollover();
+  });
+  window.addEventListener("focus", checkDayRollover);
+  setInterval(checkDayRollover, 60000);
+
+  var rt;
+  window.addEventListener("resize", function () {
+    clearTimeout(rt);
+    rt = setTimeout(function () { drawCumulative(); drawMonthly(); }, 140);
+  });
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("./sw.js").catch(function () { });
+    });
+  }
+})();
+</script>
+
+</body>
+</html>
